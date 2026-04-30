@@ -10,15 +10,14 @@ const __str = (v: unknown) => Object.prototype.toString.call(v);
 const isRegExp = (v: unknown): v is RegExp => __str(v) === "[object RegExp]";
 const isDate = (v: unknown): v is Date => __str(v) === "[object Date]";
 
-export function clone<T>(
-  val: T,
-  {
+export function clone<T>(val: T, opts: CloneOpts = {}): T {
+  const {
     circular = true,
     depth = Infinity,
     prototype,
     includeNonEnumerable = false,
-  }: CloneOpts = {},
-): T {
+  } = opts;
+
   // Use WeakMap for efficient circular reference tracking
   const allParents = new WeakMap();
 
