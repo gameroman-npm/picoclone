@@ -1,14 +1,20 @@
 export interface CloneOpts {
+  /** @default true */
   circular?: boolean;
+  /** @default Infinity */
   depth?: number;
   prototype?: unknown;
+  /** @default false */
   includeNonEnumerable?: boolean;
 }
 
 const __str = (v: unknown) => Object.prototype.toString.call(v);
 
-const isRegExp = (v: unknown): v is RegExp => __str(v) === "[object RegExp]";
-const isDate = (v: unknown): v is Date => __str(v) === "[object Date]";
+export const isRegExp = (v: unknown): v is RegExp =>
+  __str(v) === "[object RegExp]";
+export const isDate = (v: unknown): v is Date => __str(v) === "[object Date]";
+
+const hasBuffer = typeof Buffer !== "undefined";
 
 export function clone<T>(val: T, opts: CloneOpts = {}): T {
   const {
@@ -22,24 +28,20 @@ export function clone<T>(val: T, opts: CloneOpts = {}): T {
   const allParents = new WeakMap();
 
   const _clone = <T>(value: T, currentDepth: number): T => {
-    // 1. Handle Primitives and Null
     if (value === null || typeof value !== "object") {
       return value;
     }
 
-    // 2. Handle Depth Limit
     if (currentDepth <= 0) {
       return value;
     }
 
-    // 3. Circular Reference Check
     if (circular && allParents.has(value)) {
       return allParents.get(value);
     }
 
     let child;
 
-    // 4. Handle Specific Types
     if (isDate(value)) {
       child = new Date(value.getTime());
     } else if (isRegExp(value)) {
@@ -47,18 +49,16 @@ export function clone<T>(val: T, opts: CloneOpts = {}): T {
       child.lastIndex = value.lastIndex;
     } else if (value instanceof Map) {
       child = new Map() as T & Map<unknown, unknown>;
-      allParents.set(value, child); // Set early for circularity
+      allParents.set(value, child);
       for (const [k, v] of value) {
         child.set(_clone(k, currentDepth - 1), _clone(v, currentDepth - 1));
       }
-      return child;
     } else if (value instanceof Set) {
       child = new Set() as T & Set<unknown>;
       allParents.set(value, child);
       for (const v of value) {
         child.add(_clone(v, currentDepth - 1));
       }
-      return child;
     } else if (value instanceof Promise) {
       child = value.then(
         (v) => _clone(v, currentDepth - 1),
@@ -66,13 +66,17 @@ export function clone<T>(val: T, opts: CloneOpts = {}): T {
           throw _clone(err, currentDepth - 1);
         },
       );
+    } else if (hasBuffer && Buffer.isBuffer(value)) {
+      return Buffer.from(value) as T;
     } else if (Array.isArray(value)) {
       child = [];
     } else if (Error.isError(value)) {
-      child = Object.create(Object.getPrototypeOf(value));
+      child = value;
     } else {
-      // 5. Handle Objects & Prototypes
-      const proto = prototype ?? Object.getPrototypeOf(value);
+      const proto =
+        typeof prototype === "undefined"
+          ? Object.getPrototypeOf(value)
+          : prototype;
       child = Object.create(proto);
     }
 
@@ -80,7 +84,6 @@ export function clone<T>(val: T, opts: CloneOpts = {}): T {
       allParents.set(value, child);
     }
 
-    // 6. Property Copying (Enumerable & Symbols)
     const props = includeNonEnumerable
       ? Object.getOwnPropertyNames(value)
       : Object.keys(value);
@@ -90,12 +93,15 @@ export function clone<T>(val: T, opts: CloneOpts = {}): T {
     [...props, ...symbols].forEach((key) => {
       const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
 
-      // Skip setters without getters or read-only properties if necessary
+      if (!descriptor.enumerable && !includeNonEnumerable) {
+        return;
+      }
+
       if (descriptor.writable || descriptor.set || descriptor.configurable) {
         // @ts-expect-error
         const clonedValue = _clone(value[key], currentDepth - 1);
 
-        if (includeNonEnumerable || symbols.includes(key)) {
+        if (includeNonEnumerable || typeof key === "symbol") {
           Object.defineProperty(child, key, {
             ...descriptor,
             value: clonedValue,
