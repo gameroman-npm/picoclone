@@ -19,7 +19,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "bun test",
+    "test:bun": "bun test",
+    "test": "node --test",
     "lint": "oxlint",
     "format": "oxfmt",
     "build": "tsdown",
